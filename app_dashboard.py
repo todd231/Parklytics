@@ -4,12 +4,12 @@ import sqlite3
 import warnings
 import dash
 import dash_bootstrap_components as dbc
-import pytz
 import requests
 from dash import dcc, html
 from dash.dependencies import Input, Output
 from datetime import datetime, timedelta
 from dateutil import parser
+# import pytz
 # import os
 # import plotly.io as pio
 # import numpy as np
@@ -301,10 +301,11 @@ def get_weather_report_div():
     # Debug print
     #print("Weather API response:", data)
     
-    weather = data['weather'][0]['main']
+    #weather = data['weather'][0]['main']
     description = data['weather'][0]['description']
     temp = data['main']['temp']
-    report = f"Current Weather is: {description.capitalize()} and {int(round(temp))}°F in Disney World"
+    feels_like = data['main']['feels_like']
+    report = f"Current Weather is: {description.capitalize()} and {int(round(temp))}°F, but it feels like {int(round(feels_like))}°F in Disney World"
     
     return html.Div(report, style={
         'fontSize': '30px',
@@ -324,13 +325,14 @@ def get_top_5_waits_per_park(conn, park_name, timestamp):
     start = (timestamp - timedelta(minutes=2)).isoformat()
     end = (timestamp + timedelta(minutes=2)).isoformat()
     query = """
-    SELECT e.name, qs.wait_minutes
+    SELECT e.name, MAX(qs.wait_minutes) AS wait_minutes
     FROM queue_status qs
     JOIN entities e ON qs.entity_id = e.id
     WHERE e.park = ? AND e.type = 'ATTRACTION'
-      AND qs.timestamp BETWEEN ? AND ?
-      AND qs.wait_minutes > 0
-    ORDER BY qs.wait_minutes DESC
+        AND qs.timestamp BETWEEN ? AND ?
+        AND qs.wait_minutes > 1
+    GROUP BY e.name
+    ORDER BY wait_minutes DESC
     LIMIT 5;
     """
     return pd.read_sql_query(query, conn, params=(park_name, start, end))
@@ -651,7 +653,7 @@ def update_park_info(_):
                         if price > 999:  # Fix cents-style data
                             price /= 100
                         price_str = f"${price:.2f}"
-                    except:
+                    except (ValueError, TypeError):  
                         price_str = "N/A"
 
                     # Only show "Not Available" if it's truly not available
