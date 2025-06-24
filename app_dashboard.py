@@ -265,6 +265,8 @@ def get_evening_showtime(park_name, show_name):
         return "Currently Not Available"
 
 # Function to get current wait times (most recent data)
+
+# Function to get current wait times (most recent data)
 def get_current_wait_times(park_df):
     """Extract the most recent wait times for attractions."""
     if park_df.empty:
@@ -275,7 +277,6 @@ def get_current_wait_times(park_df):
     latest_timestamp = park_df['Rounded Timestamp'].max()
     
     # Filter for the latest data
-    #latest_data = park_df[park_df['Timestamp'] == latest_timestamp]
     latest_data = park_df[park_df['Rounded Timestamp'] == latest_timestamp]
     
     # Filter for attractions only and those with wait times
@@ -284,10 +285,42 @@ def get_current_wait_times(park_df):
         (latest_data['Wait Minutes'] > 0)
     ]
     
+    # FIXED: Remove duplicates by taking the maximum wait time for each attraction
+    # This handles cases where there are multiple records for the same attraction at the same timestamp
+    attractions_deduped = attractions.groupby('Name').agg({
+        'Wait Minutes': 'max',  # Take the maximum wait time if there are duplicates
+        'Type': 'first',
+        'Timestamp': 'first',
+        'Last Updated': 'first'
+    }).reset_index()
+    
     # Sort by wait time (descending) and get top 5
-    top_attractions = attractions.sort_values('Wait Minutes', ascending=False).head(5)
+    top_attractions = attractions_deduped.sort_values('Wait Minutes', ascending=False).head(5)
     
     return top_attractions
+# def get_current_wait_times(park_df):
+#     """Extract the most recent wait times for attractions."""
+#     if park_df.empty:
+#         return pd.DataFrame()
+  
+#     # Round timestamps to the nearest minute
+#     park_df['Rounded Timestamp'] = pd.to_datetime(park_df['Timestamp']).dt.floor('min')
+#     latest_timestamp = park_df['Rounded Timestamp'].max()
+    
+#     # Filter for the latest data
+#     #latest_data = park_df[park_df['Timestamp'] == latest_timestamp]
+#     latest_data = park_df[park_df['Rounded Timestamp'] == latest_timestamp]
+    
+#     # Filter for attractions only and those with wait times
+#     attractions = latest_data[
+#         (latest_data['Type'] == 'ATTRACTION') & 
+#         (latest_data['Wait Minutes'] > 0)
+#     ]
+    
+#     # Sort by wait time (descending) and get top 5
+#     top_attractions = attractions.sort_values('Wait Minutes', ascending=False).head(5)
+    
+#     return top_attractions
 
 #6/19/2025 Function to get Weather
 API_KEY = "9b2a3de1dbd52c35bd6c2a7630d54391"
@@ -838,10 +871,13 @@ def update_current_wait_times(_):
             # Update layout
             fig.update_layout(
                 title=f"{park_name} - Current Wait Times",
-                xaxis=dict(title="Attraction", tickangle=60, tickfont=dict(size=8)),
+                xaxis=dict(
+                    title="",  # Remove the "Attraction" title
+                    showticklabels=False  # Hide the attraction names
+                ),
                 yaxis=dict(title="Wait Time (minutes)"),
                 height=400,
-                margin=dict(l=50, r=50, b=100, t=100),
+                margin=dict(l=50, r=50, b=50, t=100),  # Reduced bottom margin since no labels
                 legend=dict(
                     orientation="v",
                     yanchor="top",
@@ -851,6 +887,21 @@ def update_current_wait_times(_):
                 ),
                 bargap=0.2
             )
+            # fig.update_layout(
+            #     title=f"{park_name} - Current Wait Times",
+            #     xaxis=dict(title="Attraction", tickangle=60, tickfont=dict(size=8)),
+            #     yaxis=dict(title="Wait Time (minutes)"),
+            #     height=400,
+            #     margin=dict(l=50, r=50, b=100, t=100),
+            #     legend=dict(
+            #         orientation="v",
+            #         yanchor="top",
+            #         y=0.99,
+            #         xanchor="right",
+            #         x=1.3
+            #     ),
+            #     bargap=0.2
+            # )
             
             park_rows.append(dbc.Row([
                 dbc.Col([
