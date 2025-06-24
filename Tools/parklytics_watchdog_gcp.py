@@ -4,6 +4,8 @@ import subprocess
 import sqlite3
 import logging
 import smtplib
+import pytz
+import psutil
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -17,7 +19,7 @@ ETL_LOG = '/home/tplatt428/logs/etl.log'
 CRON_MAX_AGE_MINUTES = 30
 DATA_MAX_AGE_MINUTES = 0.01
 
-SERVICES = ['parklytics-live.service', 'parklytics-weather.server']
+SERVICES = ['parklytics-live.service', 'parklytics-weather.service']
 
 # === Email config ===
 EMAIL_ENABLED = True
@@ -61,7 +63,35 @@ def check_service_status(service_name):
         logging.error(f"Error checking service {service_name}: {e}")
         return False
 
-import pytz
+def get_disk_usage():
+    try:
+        st = os.statvfs('/')
+        total = st.f_frsize * st.f_blocks
+        free = st.f_frsize * st.f_bavail
+        used = total - free
+        percent = (used / total) * 100
+
+        msg = f"Disk usage: {used // (1024**3)} GB used of {total // (1024**3)} GB ({percent:.2f}%)"
+        logging.info(msg)
+        return msg
+    except Exception as e:
+        logging.error(f"Error getting disk usage: {e}")
+        return "Disk usage: Error"
+
+def get_memory_usage():
+    try:
+        mem = psutil.virtual_memory()
+        total = mem.total // (1024**2)
+        used = (mem.total - mem.available) // (1024**2)
+        percent = mem.percent
+
+        msg = f"Memory usage: {used} MB used of {total} MB ({percent}%)"
+        logging.info(msg)
+        return msg
+    except Exception as e:
+        logging.error(f"Error getting memory usage: {e}")
+        return "Memory usage: Error"
+
 
 def get_latest_db_timestamp_central():
     try:
@@ -112,11 +142,14 @@ def watchdog_check():
     # --- Systemd Services ---
     for svc in SERVICES:
         if check_service_status(svc):
-            logging.info(f"{svc} is running.")
+            msg = f"{svc} is ✅ running."
+            logging.info(msg)
         else:
-            msg = f"{svc} is NOT running!"
+            msg = f"{svc} is ❌ NOT running!"
             logging.error(msg)
-            alert_messages.append(msg)
+        alert_messages.append(msg)
+        alert_messages.append("") 
+
 
     # --- Database Freshness ---
     # --- Latest DB Timestamp (Central) ---
@@ -124,6 +157,15 @@ def watchdog_check():
     timestamp_msg = f"Latest queue_status timestamp: {latest_db_time}"
     logging.info(timestamp_msg)
     alert_messages.append(timestamp_msg)
+    alert_messages.append("")  # ← adds line break before disk info
+
+    disk_msg = get_disk_usage()
+    mem_msg = get_memory_usage()
+
+    alert_messages.append(disk_msg)
+    alert_messages.append("")  # ← adds line break before disk info
+    alert_messages.append(mem_msg)
+    alert_messages.append("")  # ← adds line break before cron info
 
     # --- Cron Job Logs ---
     if check_log_freshness(SCHEDULE_LOG, CRON_MAX_AGE_MINUTES):
@@ -132,6 +174,7 @@ def watchdog_check():
         msg = f"Schedule job may not have run! Check {SCHEDULE_LOG}"
         logging.error(msg)
         alert_messages.append(msg)
+        alert_messages.append("")  # ← adds line break before disk info
 
     if check_log_freshness(ETL_LOG, CRON_MAX_AGE_MINUTES):
         logging.info("ETL job ran recently.")
