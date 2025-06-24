@@ -613,7 +613,6 @@ def update_park_info(_):
             # Extract specific rows by Type
             park_hours = today_info[today_info['Type'] == 'FULL_DAY_HOURS']
             special_events = today_info[(today_info['Type'] == 'TICKETED_EVENT') & today_info['Description'].isin(['Early Entry', 'Extended Evening'])]
-            special_events = special_events.drop_duplicates(subset=['Type', 'Opening Time', 'Closing Time', 'Description'])
             park_hopping = today_info[(today_info['Type'] == 'INFO') & (today_info['Description'] == 'Park Hopping')]
             lightning_lanes = today_info[today_info['Purchase Type'].notna()] if 'Purchase Type' in today_info.columns else pd.DataFrame()
             
@@ -722,13 +721,9 @@ def update_snapshot(_):
 
         for park_name, info in parks.items():
             top5_df = get_top_5_waits_per_park(conn, park_name, latest_time)
-            top5_df = top5_df.drop_duplicates(subset=['name'])
-            top5_df = top5_df.sort_values(by='wait_minutes', ascending=False)
             longest, shortest = get_extreme_waits(conn, park_name, latest_time)
             percent_operating = get_operating_percentage(conn, park_name, latest_time)
             closed_df = get_closed_attractions(conn, park_name, latest_time)
-            closed_df = closed_df.drop_duplicates(subset=['name', 'status'])
-
 
             # Top 5 Table
             table = dbc.Table.from_dataframe(
