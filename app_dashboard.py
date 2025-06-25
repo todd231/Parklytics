@@ -587,7 +587,7 @@ app.layout = dbc.Container([
     
     # 06/25/2025 - Crowd Index Summary Section
     html.Div([
-        html.H2("Crowd Index Summary", className="text-center mb-4"),
+        html.H2("Current Crowd Index Summary", className="text-center mb-4"),
         html.Div(id="crowd-index-summary", className="mb-5"),
     ]),
     
