@@ -5,14 +5,10 @@ import warnings
 import dash
 import dash_bootstrap_components as dbc
 import requests
-import sys
 from dash import dcc, html
 from dash.dependencies import Input, Output
 from datetime import datetime, timedelta
 from dateutil import parser
-from utils.crowd_index_utils import get_crowd_index_summary, get_crowd_level
-
-sys.path.append("I:/Parklytics")
 
 # Ignore warnings
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -584,13 +580,7 @@ app.layout = dbc.Container([
         html.H2("Today's Park Information", className="text-center mb-4"),
         html.Div(id="park-info-section", className="mb-4"),
     ]),
-    
-    # 06/25/2025 - Crowd Index Summary Section
-    html.Div([
-        html.H2("Crowd Index Summary", className="text-center mb-4"),
-        html.Div(id="crowd-index-summary", className="mb-5"),
-    ]),
-    
+      
     # Current Day Snapshot Section (Modified to show ALL attractions over 10 minutes)
     html.Div([
         html.H2("Today's Day Snapshot - Attractions with 10+ Minute Waits", className="text-center mb-4"),
@@ -892,6 +882,145 @@ def update_ride_hourly_trends(_):
 
     return html.Div(trend_rows)
 
+# Fixed Callback for Combined Day and Hour Analysis (using warehouse data)
+# @app.callback(
+#     Output("combined-day-hour", "children"),
+#     [Input("interval-component", "n_intervals")]
+# )
+# def update_combined_day_hour(_):
+#     park_rows = []
+
+#     for park_name, info in parks.items():
+#         # Fixed: Use warehouse data instead of live data
+#         combined_data = get_wait_times_by_day_and_hour_warehouse(park_warehouse_data[park_name])
+#         day_data = combined_data['day']
+#         hour_data = combined_data['hour']
+
+#         if not day_data.empty and not hour_data.empty:
+#             attractions = day_data['Name'].unique()[:COMBINED_ANALYSIS_COUNT]  # Use configurable count
+#             colors = generate_colors(len(attractions))
+
+#             # --- DAY OF WEEK CHART ---
+#             day_fig = go.Figure()
+#             for i, attraction in enumerate(attractions):
+#                 day_attraction_data = day_data[day_data['Name'] == attraction]
+                
+#                 if not day_attraction_data.empty:
+#                     day_fig.add_trace(
+#                         go.Scatter(
+#                             x=day_attraction_data['Day of Week'],
+#                             y=day_attraction_data['Wait Minutes'],
+#                             mode='lines+markers',
+#                             name=attraction,
+#                             line=dict(width=1.5, color=colors[i]),
+#                             marker=dict(size=6, color=colors[i]),
+#                             hoverinfo='text',
+#                             hovertext=[
+#                                 f"{attraction}<br>{day}: {wait:.1f} minutes"
+#                                 for day, wait in zip(day_attraction_data['Day of Week'], day_attraction_data['Wait Minutes'])
+#                             ]
+#                         )
+#                     )
+#             day_fig.update_layout(
+#                 title=f"{park_name} - Average Wait Time by Day of Week (Historical)",
+#                 xaxis_title="Day of Week",
+#                 yaxis_title="Average Wait Time (minutes)",
+#                 height=400,
+#                 margin=dict(l=50, r=50, b=50, t=100)
+#             )
+
+#             # --- HOUR OF DAY CHART ---
+#             hour_fig = go.Figure()
+#             for i, attraction in enumerate(attractions):
+#                 # Filter to only include hours from 6 to 24
+#                 hour_attraction_data = hour_data[
+#                     (hour_data['Name'] == attraction) &
+#                     (hour_data['Hour of Day'] >= 6) &
+#                     (hour_data['Hour of Day'] <= 24)
+#                 ]
+
+#                 if not hour_attraction_data.empty:
+#                     hour_fig.add_trace(
+#                         go.Scatter(
+#                             x=hour_attraction_data['Hour of Day'],
+#                             y=hour_attraction_data['Wait Minutes'],
+#                             mode='lines+markers',
+#                             name=attraction,
+#                             line=dict(width=1.5, color=colors[i]),
+#                             marker=dict(size=6, color=colors[i]),
+#                             hoverinfo='text',
+#                             hovertext=[
+#                                 f"{attraction}<br>{hour}:00 - {wait:.1f} minutes"
+#                                 for hour, wait in zip(hour_attraction_data['Hour of Day'], hour_attraction_data['Wait Minutes'])
+#                             ]
+#                         )
+#                     )
+            
+#             hour_fig.update_layout(
+#                 title=f"{park_name} - Average Wait Time by Hour of Day (Historical)",
+#                 xaxis=dict(
+#                     title="Hour of Day",
+#                     tickmode='array',
+#                     tickvals=list(range(7, 24)),
+#                     ticktext=[f"{h:02d}:00" for h in range(7, 24)],
+#                     tickangle=0,
+#                     tickfont=dict(size=8),
+#                     range=[6, 24],
+#                     type='linear'
+#                 ),
+#                 yaxis_title="Average Wait Time (minutes)",
+#                 height=400,
+#                 margin=dict(l=50, r=50, b=50, t=100)
+#             )
+            
+#             # Append both graphs separately
+#             park_rows.append(
+#                 dbc.Row(
+#                     dbc.Col(
+#                         html.Div(
+#                             dcc.Graph(
+#                                 figure=day_fig,
+#                                 config={'responsive': True},
+#                                 style={'minWidth': '600px'}
+#                             ),
+#                             style={'overflowX': 'auto'}
+#                         )
+#                     ),
+#                     className="mb-4"
+#                 )
+#             )
+#             park_rows.append(
+#                 dbc.Row(
+#                     dbc.Col(
+#                         html.Div(
+#                             dcc.Graph(
+#                                 figure=hour_fig,
+#                                 config={'responsive': True},
+#                                 style={'minWidth': '600px'}
+#                             ),
+#                             style={'overflowX': 'auto'}
+#                         )
+#                     ),
+#                     className="mb-5"
+#                 )
+#             )
+
+#     return html.Div(park_rows)
+
+# # Fixed Callback for Interval Timer (refresh global park data)
+# @app.callback(
+#     Output('live-update-text', 'children'),
+#     Input('interval-component', 'n_intervals')
+# )
+# def update_layout(n):
+#     # Refresh global park data
+#     global park_data, park_warehouse_data
+#     for park_name in parks.keys():
+#         park_data[park_name] = load_park_data(park_name)
+#         park_warehouse_data[park_name] = load_warehouse_data(park_name)  # Also refresh warehouse data
+
+#     return f"Updated {n} times."
+
 # Fixed Combined Day and Hour Analysis Callback (using warehouse data)
 @app.callback(
     Output("combined-day-hour", "children"),
@@ -1016,45 +1145,6 @@ def update_combined_day_hour(_):
             )
 
     return html.Div(park_rows)
-
-# 06/25/2025 - Callback for Crowd Index Summary
-@app.callback(
-    Output("crowd-index-summary", "children"),
-    Input("interval-component", "n_intervals")
-)
-def update_crowd_index_summary(n):
-    data = get_crowd_index_summary(live_db_path, list(parks.keys()))
-    if not data:
-        return html.Div("⚠️ Crowd data unavailable.", className="text-muted text-center")
-
-    rows = []
-    for park, result in data.items():
-        level = get_crowd_level(result['crowd_index'])
-        color = {
-            "🟢 Light": "green",
-            "🟡 Moderate": "goldenrod",
-            "🟠 Busy": "orange",
-            "🔴 Packed": "red"
-        }.get(level, "black")
-
-        rows.append(
-            dbc.Col(
-                dbc.Card(
-                    dbc.CardBody([
-                        html.H4(f"{park}", className="card-title"),
-                        html.P(f"{result['crowd_index']}% {level}", style={"color": color, "fontSize": "1.5rem", "fontWeight": "bold"}),
-                        html.P(f"Avg Wait: {result['avg_wait']} min", className="text-muted"),
-                        html.P(f"Max Wait: {result['max_wait']} min", className="text-muted"),
-                        html.P(f"{result['attractions_operating']}/{result['attractions_total']} Attractions Operating", className="text-muted"),
-                        html.P(f"Utilization: {result['utilization_rate']}%", className="text-muted"),
-                        html.P(f"Confidence: {result['confidence']}", className="text-muted")
-                    ])
-                ),
-                xs=12, sm=12, md=6, lg=3
-            )
-        )
-
-    return dbc.Row(rows)
 
 # Callback for Interval Timer (refresh global park data)
 @app.callback(
