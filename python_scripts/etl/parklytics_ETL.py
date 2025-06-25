@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta
 
 # === CONFIGURATION ===
-ETL_DAYS_TO_KEEP_RUNTIME_DATA = 2
+ETL_DAYS_TO_KEEP_RUNTIME_DATA = 1
 BATCH_SIZE = 1000
 TEST_MODE = False  # Set to True to test without committing
 
@@ -17,6 +17,7 @@ LOG_FILE = os.path.join(LOG_DIR, f'ETL_LiveToWarehouse_{datetime.now().strftime(
 
 # Tables to copy: (table_name, date_column)
 TABLES_WITH_DATES = [
+    ('entities', None),  # full copy, no date filtering
     ('queue_status', 'timestamp'),
     ('forecast', 'forecast_time'),
     ('schedule', 'date'),
@@ -30,22 +31,33 @@ def log(message):
         f.write(f"{timestamp} - {message}\n")
 
 def copy_data(table, date_column, conn_src, conn_dst, target_date):
-    log(f"🔄 Copying from {table} for date {target_date}")
-    offset = 0
-    total_copied = 0
-    while True:
-        rows = conn_src.execute(
-            f"SELECT * FROM {table} WHERE DATE({date_column}) = ? LIMIT {BATCH_SIZE} OFFSET {offset}",
-            (target_date,)
-        ).fetchall()
-        if not rows:
-            break
-        placeholders = ','.join(['?'] * len(rows[0]))
-        conn_dst.executemany(f"INSERT OR IGNORE INTO {table} VALUES ({placeholders})", rows)
-        offset += BATCH_SIZE
-        total_copied += len(rows)
-        log(f"   Copied {len(rows)} rows (Total: {total_copied})")
-    return total_copied
+    if date_column is None:
+        log(f"🔄 Copying full table {table} (no date filter)")
+        rows = conn_src.execute(f"SELECT * FROM {table}").fetchall()
+        total_copied = 0
+        if rows:
+            placeholders = ','.join(['?'] * len(rows[0]))
+            conn_dst.executemany(f"INSERT OR IGNORE INTO {table} VALUES ({placeholders})", rows)
+            total_copied = len(rows)
+        log(f"   Copied {total_copied} rows (full table)")
+        return total_copied
+    else:
+        log(f"🔄 Copying from {table} for date {target_date}")
+        offset = 0
+        total_copied = 0
+        while True:
+            rows = conn_src.execute(
+                f"SELECT * FROM {table} WHERE DATE({date_column}) = ? LIMIT {BATCH_SIZE} OFFSET {offset}",
+                (target_date,)
+            ).fetchall()
+            if not rows:
+                break
+            placeholders = ','.join(['?'] * len(rows[0]))
+            conn_dst.executemany(f"INSERT OR IGNORE INTO {table} VALUES ({placeholders})", rows)
+            offset += BATCH_SIZE
+            total_copied += len(rows)
+            log(f"   Copied {len(rows)} rows (Total: {total_copied})")
+        return total_copied
 
 def prune_old_data(table, date_column, conn, cutoff_date):
     log(f"🧹 Pruning rows in {table} older than {cutoff_date}")
@@ -57,25 +69,27 @@ def prune_old_data(table, date_column, conn, cutoff_date):
     return deleted
 
 def run_etl():
-    today = datetime.now().date()
-    cutoff_date = today - timedelta(days=ETL_DAYS_TO_KEEP_RUNTIME_DATA - 1)
-    today_str = today.strftime('%Y-%m-%d')
-    cutoff_str = cutoff_date.strftime('%Y-%m-%d')
+    target_date = (datetime.now().date() - timedelta(days=2)).strftime('%Y-%m-%d')
+    cutoff_date = (datetime.now().date() - timedelta(days=ETL_DAYS_TO_KEEP_RUNTIME_DATA)).strftime('%Y-%m-%d')
 
-    log("=== ETL PROCESS STARTED ===")
+    log(f"=== ETL PROCESS STARTED for target date {target_date} ===")
     log(f"TEST MODE: {'ON' if TEST_MODE else 'OFF'}")
-    log(f"Keeping {ETL_DAYS_TO_KEEP_RUNTIME_DATA} days in live.db (Cutoff: {cutoff_str})")
+    log(f"Keeping {ETL_DAYS_TO_KEEP_RUNTIME_DATA} days in live.db (Cutoff: {cutoff_date})")
 
     conn_live = sqlite3.connect(LIVE_DB)
     conn_warehouse = sqlite3.connect(WAREHOUSE_DB)
 
     try:
         for table, date_column in TABLES_WITH_DATES:
-            copied = copy_data(table, date_column, conn_live, conn_warehouse, today_str)
+            if table == 'entities':
+                copied = copy_data(table, None, conn_live, conn_warehouse, target_date=None)
+            else:
+                copied = copy_data(table, date_column, conn_live, conn_warehouse, target_date)
             log(f"✅ Copied {copied} rows from {table}")
 
-            deleted = prune_old_data(table, date_column, conn_live, cutoff_str)
-            log(f"🗑️ Deleted {deleted} old rows from {table} in live.db")
+            if date_column is not None and table != 'entities':
+                deleted = prune_old_data(table, date_column, conn_live, cutoff_date)
+                log(f"🗑️ Deleted {deleted} old rows from {table} in live.db")
 
         if TEST_MODE:
             log("🚫 TEST MODE ACTIVE — Rolling back changes")
