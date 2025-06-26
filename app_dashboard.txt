@@ -428,22 +428,6 @@ def get_closed_attractions(conn, park_name, timestamp):
     """
     return pd.read_sql_query(query, conn, params=(park_name, start, end))
 
-# 06/26/2025 - Function to get DOWN rides
-def get_down_attractions(conn, park_name, timestamp):
-    start = (timestamp - timedelta(minutes=5)).isoformat()
-    end = (timestamp + timedelta(minutes=5)).isoformat()
-    query = """
-    SELECT e.name
-    FROM queue_status qs
-    JOIN entities e ON qs.entity_id = e.id
-    WHERE e.park = ? AND e.type = 'ATTRACTION'
-      AND qs.timestamp BETWEEN ? AND ?
-      AND qs.status = 'DOWN'
-    ORDER BY e.name
-    """
-    df = pd.read_sql_query(query, conn, params=(park_name, start, end))
-    return df.drop_duplicates(subset=['name']) if not df.empty else pd.DataFrame()
-
 # Modified function to get configurable number of rides for hourly trends
 def get_top_rides_hourly_data_today(park_df, num_rides=TOP_RIDES_HOURLY_TRENDS):
     """
@@ -756,7 +740,7 @@ def update_park_info(_):
 
     return dbc.Row(park_cards, className="mb-4")
 
-# 06/26/2025 - Updated callback to show DOWN rides
+# Modified Callback for Snapshot Section (shows ALL attractions over 10 minutes)
 @app.callback(
     Output("snapshot-section", "children"),
     [Input("interval-component", "n_intervals")]
@@ -765,14 +749,14 @@ def update_snapshot(_):
     snapshot_rows = []
 
     try:
-        conn = sqlite3.connect(live_db_path)
+        conn = sqlite3.connect(live_db_path)  # Fixed: was db_path, now live_db_path
         latest_time = get_latest_snapshot_timestamp(conn)
 
         if not latest_time:
             return html.P("No snapshot data available.")
 
         for park_name, info in parks.items():
-            # Existing data pulls
+            # Fixed: Use the correct function for all waits over threshold
             all_waits_df = get_all_waits_over_threshold(conn, park_name, latest_time, threshold=10)
             all_waits_df = all_waits_df.drop_duplicates(subset=['name'])
             all_waits_df = all_waits_df.sort_values(by='wait_minutes', ascending=False)
@@ -782,10 +766,7 @@ def update_snapshot(_):
             closed_df = get_closed_attractions(conn, park_name, latest_time)
             closed_df = closed_df.drop_duplicates(subset=['name', 'status'])
 
-            # NEW: Get Down attractions
-            down_df = get_down_attractions(conn, park_name, latest_time)
-
-            # Attractions over 10 mins table
+            # All attractions over 10 minutes table
             if not all_waits_df.empty:
                 table = dbc.Table.from_dataframe(
                     all_waits_df.rename(columns={"name": "Attraction", "wait_minutes": "Wait (min)"}),
@@ -794,43 +775,36 @@ def update_snapshot(_):
             else:
                 table = html.P("No attractions currently have waits over 10 minutes.", className="text-muted")
             
-            # Sort closed for styling
+            # Sort so 'REFURBISHMENT' rows come last
             closed_df['status_sort'] = closed_df['status'].apply(lambda x: 1 if x == 'REFURBISHMENT' else 0)
             closed_df = closed_df.sort_values(by=['status_sort', 'name']).drop(columns=['status_sort'])
             
-            # Closed Attractions list
+            # Closed Attraction List with styling and italics
             closed_list = html.Ul([
                 html.Li(
                     f"{row['name']} – {'Closed for Refurbishment' if row['status'] == 'REFURBISHMENT' else 'Closed'}",
-                    style={"fontSize": "0.85rem", "fontStyle": "italic", "color": "#6c757d"}
+                    style={
+                        "fontSize": "0.85rem",      # smaller font
+                        "fontStyle": "italic",      # italicized text
+                        "color": "#6c757d"          # muted gray color to match Bootstrap text-muted
+                    }
                 )
                 for _, row in closed_df.iterrows()
-            ]) if not closed_df.empty else html.P("None currently closed.", className="text-muted", style={"fontSize": "0.85rem", "fontStyle": "italic"})
+            ]) if not closed_df.empty else html.P(
+                "None currently closed.",
+                className="text-muted",
+                style={"fontSize": "0.85rem", "fontStyle": "italic"}
+            )
 
-            # NEW: Down Attractions list
-            if not down_df.empty:
-                down_list = html.Ul([
-                    html.Li(name, style={"fontSize": "0.9rem"}) for name in down_df['name'].sort_values()
-                ])
-            else:
-                down_list = html.P("No attractions temporarily down.", className="text-muted", style={"fontSize": "0.85rem", "fontStyle": "italic"})
-
-            # Compose the park snapshot column
             snapshot_rows.append(
                 dbc.Col([
                     html.H5(park_name, className="text-center mt-2"),
                     table,
                     html.Div([
-                        html.P(f"Longest Wait: {longest[0]} – {longest[1]} min", style={"margin": "2px 0"}),
-                        html.P(f"Shortest Wait: {shortest[0]} – {shortest[1]} min", style={"margin": "2px 0"}),
-                        html.P(f"Operating Attractions: {percent_operating}%", style={"margin": "2px 0"}),
+                        html.P(f"Longest Wait: {longest[0]} – {longest[1]} min"),
+                        html.P(f"Shortest Wait: {shortest[0]} – {shortest[1]} min"),
+                        html.P(f"Operating Attractions: {percent_operating}%")
                     ], className="text-muted", style={"fontSize": "0.9rem"}),
-                    
-                    # Insert DOWN attractions section here:
-                    html.Div([
-                        html.H6("Attractions Temporarily Down", className="mt-3"),
-                        down_list
-                    ]),
 
                     html.Div([
                         html.H6("Closed Attractions", className="mt-3"),
@@ -845,86 +819,6 @@ def update_snapshot(_):
     except Exception as e:
         print(f"Snapshot error: {e}")
         return html.P("Error loading snapshot data.")
-
-# Modified Callback for Snapshot Section (shows ALL attractions over 10 minutes)
-# @app.callback(
-#     Output("snapshot-section", "children"),
-#     [Input("interval-component", "n_intervals")]
-# )
-# def update_snapshot(_):
-#     snapshot_rows = []
-
-#     try:
-#         conn = sqlite3.connect(live_db_path)  # Fixed: was db_path, now live_db_path
-#         latest_time = get_latest_snapshot_timestamp(conn)
-
-#         if not latest_time:
-#             return html.P("No snapshot data available.")
-
-#         for park_name, info in parks.items():
-#             # Fixed: Use the correct function for all waits over threshold
-#             all_waits_df = get_all_waits_over_threshold(conn, park_name, latest_time, threshold=10)
-#             all_waits_df = all_waits_df.drop_duplicates(subset=['name'])
-#             all_waits_df = all_waits_df.sort_values(by='wait_minutes', ascending=False)
-            
-#             longest, shortest = get_extreme_waits(conn, park_name, latest_time)
-#             percent_operating = get_operating_percentage(conn, park_name, latest_time)
-#             closed_df = get_closed_attractions(conn, park_name, latest_time)
-#             closed_df = closed_df.drop_duplicates(subset=['name', 'status'])
-
-#             # All attractions over 10 minutes table
-#             if not all_waits_df.empty:
-#                 table = dbc.Table.from_dataframe(
-#                     all_waits_df.rename(columns={"name": "Attraction", "wait_minutes": "Wait (min)"}),
-#                     striped=True, bordered=True, hover=True, size="sm", className="mb-2"
-#                 )
-#             else:
-#                 table = html.P("No attractions currently have waits over 10 minutes.", className="text-muted")
-            
-#             # Sort so 'REFURBISHMENT' rows come last
-#             closed_df['status_sort'] = closed_df['status'].apply(lambda x: 1 if x == 'REFURBISHMENT' else 0)
-#             closed_df = closed_df.sort_values(by=['status_sort', 'name']).drop(columns=['status_sort'])
-            
-#             # Closed Attraction List with styling and italics
-#             closed_list = html.Ul([
-#                 html.Li(
-#                     f"{row['name']} – {'Closed for Refurbishment' if row['status'] == 'REFURBISHMENT' else 'Closed'}",
-#                     style={
-#                         "fontSize": "0.85rem",      # smaller font
-#                         "fontStyle": "italic",      # italicized text
-#                         "color": "#6c757d"          # muted gray color to match Bootstrap text-muted
-#                     }
-#                 )
-#                 for _, row in closed_df.iterrows()
-#             ]) if not closed_df.empty else html.P(
-#                 "None currently closed.",
-#                 className="text-muted",
-#                 style={"fontSize": "0.85rem", "fontStyle": "italic"}
-#             )
-
-#             snapshot_rows.append(
-#                 dbc.Col([
-#                     html.H5(park_name, className="text-center mt-2"),
-#                     table,
-#                     html.Div([
-#                         html.P(f"Longest Wait: {longest[0]} – {longest[1]} min"),
-#                         html.P(f"Shortest Wait: {shortest[0]} – {shortest[1]} min"),
-#                         html.P(f"Operating Attractions: {percent_operating}%")
-#                     ], className="text-muted", style={"fontSize": "0.9rem"}),
-
-#                     html.Div([
-#                         html.H6("Closed Attractions", className="mt-3"),
-#                         closed_list
-#                     ])
-#                 ], xs=12, sm=12, md=6, lg=3)
-#             )
-
-#         conn.close()
-#         return dbc.Row(snapshot_rows)
-
-#     except Exception as e:
-#         print(f"Snapshot error: {e}")
-#         return html.P("Error loading snapshot data.")
 
 # Fixed Callback for Top Rides Hourly Trends (corrected function name)
 @app.callback(
