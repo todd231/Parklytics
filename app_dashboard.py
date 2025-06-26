@@ -1017,7 +1017,7 @@ def update_combined_day_hour(_):
 
     return html.Div(park_rows)
 
-# 06/25/2025 - Callback for Crowd Index Summary
+# 06/25/2025 - Bulletproofed Callback for Crowd Index Summary
 @app.callback(
     Output("crowd-index-summary", "children"),
     Input("interval-component", "n_intervals")
@@ -1029,32 +1029,59 @@ def update_crowd_index_summary(n):
 
     rows = []
     for park, result in data.items():
-        level = get_crowd_level(result['crowd_index'])
-        color = {
-            "🟢 Light": "green",
-            "🟡 Moderate": "goldenrod",
-            "🟠 Busy": "orange",
-            "🔴 Packed": "red"
-        }.get(level, "black")
+        if not result or 'crowd_index' not in result:
+            # Park likely closed or data unavailable
+            level = "🟢 Light"
+            color = "green"
+            crowd_index = 0
+            avg_wait = 0.0
+            max_wait = 0
+            attractions_operating = 0
+            attractions_total = 0
+            utilization = 0
+            confidence = "N/A"
+            status_note = html.P("📌 Park has not opened yet. Data will begin updating at park open.", className="text-muted small")
+        else:
+            crowd_index = result.get('crowd_index', 0)
+            level = get_crowd_level(crowd_index)
+            color = {
+                "🟢 Light": "green",
+                "🟡 Moderate": "goldenrod",
+                "🟠 Busy": "orange",
+                "🔴 Packed": "red"
+            }.get(level, "black")
+            avg_wait = result.get('avg_wait', 0.0)
+            max_wait = result.get('max_wait', 0)
+            attractions_operating = result.get('attractions_operating', 0)
+            attractions_total = result.get('attractions_total', 0)
+            utilization = result.get('utilization_rate', 0)
+            confidence = result.get('confidence', "N/A")
+            status_note = None
+
+        card_body = [
+            html.H4(f"{park}", className="card-title"),
+            html.P(f"{crowd_index}% {level}", style={"color": color, "fontSize": "1.5rem", "fontWeight": "bold"}),
+            html.P(f"Avg Wait: {avg_wait} min", className="text-muted"),
+            html.P(f"Max Wait: {max_wait} min", className="text-muted"),
+            html.P(f"{attractions_operating}/{attractions_total} Attractions Operating", className="text-muted"),
+            html.P(f"Utilization: {utilization}%", className="text-muted"),
+            html.P(f"Confidence: {confidence}", className="text-muted")
+        ]
+
+        if status_note:
+            card_body.append(status_note)
 
         rows.append(
             dbc.Col(
                 dbc.Card(
-                    dbc.CardBody([
-                        html.H4(f"{park}", className="card-title"),
-                        html.P(f"{result['crowd_index']}% {level}", style={"color": color, "fontSize": "1.5rem", "fontWeight": "bold"}),
-                        html.P(f"Avg Wait: {result['avg_wait']} min", className="text-muted"),
-                        html.P(f"Max Wait: {result['max_wait']} min", className="text-muted"),
-                        html.P(f"{result['attractions_operating']}/{result['attractions_total']} Attractions Operating", className="text-muted"),
-                        html.P(f"Utilization: {result['utilization_rate']}%", className="text-muted"),
-                        html.P(f"Confidence: {result['confidence']}", className="text-muted")
-                    ])
+                    dbc.CardBody(card_body)
                 ),
                 xs=12, sm=12, md=6, lg=3
             )
         )
 
     return dbc.Row(rows)
+
 
 # Callback for Interval Timer (refresh global park data)
 @app.callback(
