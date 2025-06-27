@@ -1,9 +1,9 @@
 import dash
-from dash import html, dcc, Input, Output, State, ALL
+from dash import html, dcc, Input, Output, State, ALL, ctx
 import dash_bootstrap_components as dbc
 import uuid
 import datetime
-from park_bag_checklist import checklist_data
+from app_page_park_bag_checklist import checklist_data
 
 # Initialize the app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
@@ -32,7 +32,7 @@ def get_park_bag_layout(user):
         return html.P("Please select a user to view the checklist.")
 
     sections = []
-    user_items = mock_users.get(user, {}).get("park_bag", set())
+    user_items = mock_users.get(user, set())
 
     for category, items in checklist_data.items():
         checklist = dcc.Checklist(
@@ -47,7 +47,15 @@ def get_park_bag_layout(user):
             checklist,
             html.Hr()
         ]))
-    return html.Div(sections)
+
+    return dbc.Container([
+        html.H2("🎒 Park Bag Checklist", className="text-center mb-4"),
+        html.P("Select your user and check off items you want to pack.", className="text-center"),
+        dbc.Row([
+            dbc.Col(html.Div(sections), width=10, lg=8, className="mx-auto")
+        ])
+    ], fluid=True)
+
 
 # Type dropdown options
 itinerary_types = [
@@ -136,11 +144,7 @@ def display_page(pathname):
         return itinerary_layout
 
 
-# Show user's itinerary items
-@app.callback(
-    Output('user-itinerary', 'children'),
-    Input('select-user', 'value')
-)
+# Show user's itinerary items in layout function (no changes)
 def show_user_itinerary(user):
     if not user:
         return html.P("Select a user to view their itinerary.")
@@ -148,54 +152,119 @@ def show_user_itinerary(user):
     if not itinerary:
         return html.P("No itinerary items yet.")
     sorted_itinerary = sorted(itinerary, key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-    return html.Div([
-        html.Div([
-            dbc.Row([
-                dbc.Col(dcc.Dropdown(
-                    id={'type': 'edit-time', 'index': item['id']},
-                    options=generate_time_options(),
-                    value=item['time'],
-                    clearable=False
-                ), width=2),
-                dbc.Col(dcc.Dropdown(
-                    id={'type': 'edit-type', 'index': item['id']},
-                    options=[{"label": t, "value": t} for t in itinerary_types],
-                    value=item['type'],
-                    clearable=False
-                ), width=2),
-                dbc.Col(dbc.Input(id={'type': 'edit-name', 'index': item['id']}, value=item['name']), width=3),
-                dbc.Col(dbc.Input(id={'type': 'edit-location', 'index': item['id']}, value=item['location']), width=2),
-                dbc.Col(dbc.Input(id={'type': 'edit-notes', 'index': item['id']}, value=item['notes']), width=2),
-                dbc.Col(dbc.Button("Save", id={'type': 'save-item', 'index': item['id']}, color='primary'), width=1)
-            ], className="mb-2")
-        ]) for item in sorted_itinerary
-    ])
+    rows = []
+    for item in sorted_itinerary:
+        rows.append(
+            html.Div([
+                dbc.Row([
+                    dbc.Col(dcc.Dropdown(
+                        id={'type': 'edit-time', 'index': item['id']},
+                        options=generate_time_options(),
+                        value=item['time'],
+                        clearable=False
+                    ), width=2),
+                    dbc.Col(dcc.Dropdown(
+                        id={'type': 'edit-type', 'index': item['id']},
+                        options=[{"label": t, "value": t} for t in itinerary_types],
+                        value=item['type'],
+                        clearable=False
+                    ), width=2),
+                    dbc.Col(dbc.Input(id={'type': 'edit-name', 'index': item['id']}, value=item['name']), width=3),
+                    dbc.Col(dbc.Input(id={'type': 'edit-location', 'index': item['id']}, value=item['location']), width=2),
+                    dbc.Col(dbc.Input(id={'type': 'edit-notes', 'index': item['id']}, value=item['notes']), width=2),
+                    dbc.Col([
+                        dbc.Button("Save", id={'type': 'save-item', 'index': item['id']}, color='primary', className='d-block mb-1 w-100'),
+                        dbc.Button("Delete", id={'type': 'delete-item', 'index': item['id']}, color='danger', size='sm')
+                    ], width=2),
+                ], className="mb-2")
+            ])
+        )
+    return html.Div(rows)
 
-# Save itinerary edits
+
+# COMBINED CALLBACK to handle user selection, adding, saving, deleting itinerary items
 @app.callback(
-    Output('user-itinerary', 'children', allow_duplicate=True),
-    Input({'type': 'save-item', 'index': ALL}, 'n_clicks'),
-    State('select-user', 'value'),
-    State({'type': 'edit-time', 'index': ALL}, 'value'),
-    State({'type': 'edit-type', 'index': ALL}, 'value'),
-    State({'type': 'edit-name', 'index': ALL}, 'value'),
-    State({'type': 'edit-location', 'index': ALL}, 'value'),
-    State({'type': 'edit-notes', 'index': ALL}, 'value'),
-    prevent_initial_call=True
+    Output('user-itinerary', 'children'),
+    [
+        Input('select-user', 'value'),
+        Input('add-item-btn', 'n_clicks'),
+        Input({'type': 'save-item', 'index': ALL}, 'n_clicks'),
+        Input({'type': 'delete-item', 'index': ALL}, 'n_clicks'),
+    ],
+    [
+        State('select-user', 'value'),
+        State('item-time', 'value'),
+        State('item-type', 'value'),
+        State('item-name', 'value'),
+        State('item-location', 'value'),
+        State('item-notes', 'value'),
+        State({'type': 'edit-time', 'index': ALL}, 'value'),
+        State({'type': 'edit-type', 'index': ALL}, 'value'),
+        State({'type': 'edit-name', 'index': ALL}, 'value'),
+        State({'type': 'edit-location', 'index': ALL}, 'value'),
+        State({'type': 'edit-notes', 'index': ALL}, 'value'),
+    ],
+    prevent_initial_call=True,
 )
-def save_itinerary_edits(n_clicks, user, times, types, names, locations, notes):
-    if not user or not n_clicks or not any(n_clicks):
+def handle_itinerary(select_user_val, add_clicks, save_clicks, delete_clicks,
+                     user_state,
+                     add_time, add_type, add_name, add_location, add_notes,
+                     edit_times, edit_types, edit_names, edit_locations, edit_notes):
+    
+    triggered = ctx.triggered_id
+
+    if triggered is None:
         return dash.no_update
-    edited_data = zip(times, types, names, locations, notes)
-    for i, (time, type_, name, loc, note) in enumerate(edited_data):
-        if i < len(mock_users[user]['itinerary']):
-            mock_users[user]['itinerary'][i]['time'] = time
-            mock_users[user]['itinerary'][i]['type'] = type_
-            mock_users[user]['itinerary'][i]['name'] = name
-            mock_users[user]['itinerary'][i]['location'] = loc
-            mock_users[user]['itinerary'][i]['notes'] = note
-    mock_users[user]['itinerary'].sort(key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-    return show_user_itinerary(user)
+
+    # User selection changed - show itinerary for that user
+    if triggered == 'select-user':
+        if not select_user_val:
+            return html.P("Select a user to view their itinerary.")
+        return show_user_itinerary(select_user_val)
+
+    # Add new item button clicked
+    if triggered == 'add-item-btn':
+        if not all([user_state, add_time, add_type, add_name]):
+            return html.P("All fields except Location and Notes are required.")
+        new_item = {
+            "id": str(uuid.uuid4()),
+            "time": add_time,
+            "type": add_type,
+            "name": add_name,
+            "location": add_location or "",
+            "notes": add_notes or ""
+        }
+        mock_users[user_state]["itinerary"].append(new_item)
+        mock_users[user_state]["itinerary"].sort(key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
+        return show_user_itinerary(user_state)
+
+    # Save button clicked
+    if isinstance(triggered, dict) and triggered.get('type') == 'save-item':
+        item_id = triggered['index']
+        if not user_state:
+            return dash.no_update
+        itinerary = mock_users[user_state]['itinerary']
+        idx = next((i for i, itm in enumerate(itinerary) if itm['id'] == item_id), None)
+        if idx is None:
+            return dash.no_update
+        mock_users[user_state]['itinerary'][idx]['time'] = edit_times[idx]
+        mock_users[user_state]['itinerary'][idx]['type'] = edit_types[idx]
+        mock_users[user_state]['itinerary'][idx]['name'] = edit_names[idx]
+        mock_users[user_state]['itinerary'][idx]['location'] = edit_locations[idx]
+        mock_users[user_state]['itinerary'][idx]['notes'] = edit_notes[idx]
+        mock_users[user_state]['itinerary'].sort(key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
+        return show_user_itinerary(user_state)
+
+    # Delete button clicked
+    if isinstance(triggered, dict) and triggered.get('type') == 'delete-item':
+        item_id = triggered['index']
+        if not user_state:
+            return dash.no_update
+        mock_users[user_state]['itinerary'] = [item for item in mock_users[user_state]['itinerary'] if item['id'] != item_id]
+        return show_user_itinerary(user_state)
+
+    return dash.no_update
+
 
 @app.callback(
     Output('parkbag-layout-container', 'children'),
@@ -206,51 +275,17 @@ def update_parkbag_for_user(user):
         return html.P("Please select a user.")
     return get_park_bag_layout(user)
 
-# Add new item to itinerary and clear inputs
-@app.callback(
-    [
-        Output('user-itinerary', 'children', allow_duplicate=True),
-        Output('item-time', 'value'),
-        Output('item-type', 'value'),
-        Output('item-name', 'value'),
-        Output('item-location', 'value'),
-        Output('item-notes', 'value'),
-    ],
-    Input('add-item-btn', 'n_clicks'),
-    State('select-user', 'value'),
-    State('item-time', 'value'),
-    State('item-type', 'value'),
-    State('item-name', 'value'),
-    State('item-location', 'value'),
-    State('item-notes', 'value'),
-    prevent_initial_call=True
-)
-def add_itinerary_item(n, user, time, type_, name, location, notes):
-    if not all([user, time, type_, name]):
-        return html.P("All fields except Location and Notes are required."), None, None, None, None, None
-    new_item = {
-        "id": str(uuid.uuid4()),
-        "time": time,
-        "type": type_,
-        "name": name,
-        "location": location or "",
-        "notes": notes or ""
-    }
-    mock_users[user]["itinerary"].append(new_item)
-    mock_users[user]["itinerary"].sort(key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-    return show_user_itinerary(user), None, None, None, None, None
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8052, debug=True)
 
 
 # import dash
-# from dash import html, dcc, Input, Output, State, ctx, ALL, MATCH
+# from dash import html, callback_context, dcc, Input, Output, State, ALL, ctx
 # import dash_bootstrap_components as dbc
 # import uuid
 # import datetime
-# from park_bag_checklist import checklist_data
+# from app_page_park_bag_checklist import checklist_data
 
 # # Initialize the app
 # app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
@@ -259,12 +294,8 @@ if __name__ == '__main__':
 
 # # Simulated in-memory user data
 # mock_users = {
-#     "test_user_1": {
-#         "itinerary": []
-#     },
-#     "test_user_2": {
-#         "itinerary": []
-#     }
+#     "test_user_1": {"itinerary": [], "park_bag": set()},
+#     "test_user_2": {"itinerary": [], "park_bag": set()},
 # }
 
 # # Time dropdown options (6:00am to 1:00am in 15-minute increments)
@@ -277,7 +308,7 @@ if __name__ == '__main__':
 #         start += datetime.timedelta(minutes=15)
 #     return times
 
-# # 06/27/2025 Park Bag link
+# # Park Bag checklist layout generator
 # def get_park_bag_layout(user):
 #     if not user:
 #         return html.P("Please select a user to view the checklist.")
@@ -298,8 +329,15 @@ if __name__ == '__main__':
 #             checklist,
 #             html.Hr()
 #         ]))
-#     return html.Div(sections)
 
+#     return dbc.Container([
+#         html.H2("🎒 Park Bag Checklist", className="text-center mb-4"),
+#         html.P("Select your user and check off items you want to pack.", className="text-center"),
+#         dbc.Row([
+#             dbc.Col(html.Div(sections), width=10, lg=8, className="mx-auto")
+#         ])
+#     ], fluid=True)
+    
 
 # # Type dropdown options
 # itinerary_types = [
@@ -313,7 +351,7 @@ if __name__ == '__main__':
 #     children=[
 #         dbc.NavItem(dbc.NavLink("Itinerary", href="/itinerary")),
 #         dbc.NavItem(dbc.NavLink("Packing List", href="/packing")),
-#         dbc.NavItem(dbc.NavLink("Park Bag", href="http://localhost:8053", target="_blank")),
+#         dbc.NavItem(dbc.NavLink("Park Bag", href="/parkbag")),  # Note: no target="_blank" so it loads in same tab
 #         dbc.NavItem(dbc.NavLink("Water Stations", href="/water")),
 #     ],
 #     brand="Parklytics Planner",
@@ -350,10 +388,6 @@ if __name__ == '__main__':
 #     html.H2("Trip Packing List (Coming Soon)")
 # ])
 
-# park_bag_layout = html.Div([
-#     html.H2("Park Bag Packing List (Coming Soon)")
-# ])
-
 # water_layout = html.Div([
 #     html.H2("Water Bottle Refill Stations (Coming Soon)")
 # ])
@@ -363,38 +397,36 @@ if __name__ == '__main__':
 #     dcc.Location(id='url', refresh=False),
 #     nav_menu,
 #     html.Div(id='page-content'),
-#     dcc.Store(id='itinerary-store', storage_type='memory')
 # ])
 
-# # Page routing
+# # Page routing callback
 # @app.callback(
-#     Output('page-content', 'children'), 
-#     Input('url', 'pathname'), 
-#     State('select-user', 'value')
-#     )
-
-# def display_page(pathname, user):
+#     Output('page-content', 'children'),
+#     Input('url', 'pathname'),
+#     prevent_initial_call=True
+# )
+# def display_page(pathname):
 #     if pathname == '/packing':
 #         return packing_layout
-#     elif pathname == '/parkbag':
-#         return get_park_bag_layout(user)
 #     elif pathname == '/water':
 #         return water_layout
+#     elif pathname == '/itinerary':
+#         return itinerary_layout
+#     elif pathname == '/parkbag':
+#         # Delay showing park bag page until user is selected
+#         return html.Div([
+#             dcc.Dropdown(
+#                 id='select-user-parkbag',
+#                 options=[{"label": user, "value": user} for user in mock_users.keys()],
+#                 placeholder="Select a user to view their Park Bag checklist"
+#             ),
+#             html.Div(id='parkbag-layout-container')
+#         ])
 #     else:
 #         return itinerary_layout
 
 
-# # def display_page(pathname):
-# #     if pathname == '/packing':
-# #         return packing_layout
-# #     elif pathname == '/parkbag':
-# #         return get_park_bag_layout()
-# #     elif pathname == '/water':
-# #         return water_layout
-# #     else:
-# #         return itinerary_layout
-
-# # Display selected user's itinerary
+# # Show user's itinerary items
 # @app.callback(
 #     Output('user-itinerary', 'children'),
 #     Input('select-user', 'value')
@@ -406,77 +438,117 @@ if __name__ == '__main__':
 #     if not itinerary:
 #         return html.P("No itinerary items yet.")
 #     sorted_itinerary = sorted(itinerary, key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-#     return html.Div([
-#         html.Div([
-#             dbc.Row([
-#                 dbc.Col(dcc.Dropdown(
-#                     id={'type': 'edit-time', 'index': item['id']},
-#                     options=generate_time_options(),
-#                     value=item['time'],
-#                     clearable=False
-#                 ), width=2),
-#                 dbc.Col(dcc.Dropdown(
-#                     id={'type': 'edit-type', 'index': item['id']},
-#                     options=[{"label": t, "value": t} for t in itinerary_types],
-#                     value=item['type'],
-#                     clearable=False
-#                 ), width=2),
-#                 dbc.Col(dbc.Input(id={'type': 'edit-name', 'index': item['id']}, value=item['name']), width=3),
-#                 dbc.Col(dbc.Input(id={'type': 'edit-location', 'index': item['id']}, value=item['location']), width=2),
-#                 dbc.Col(dbc.Input(id={'type': 'edit-notes', 'index': item['id']}, value=item['notes']), width=2),
-#                 dbc.Col(dbc.Button("Save", id={'type': 'save-item', 'index': item['id']}, color='primary'), width=1)
-#             ], className="mb-2")
-#         ]) for item in sorted_itinerary
-#     ])
+#     rows = []
+#     for item in sorted_itinerary:
+#         rows.append(
+#             html.Div([
+#                 dbc.Row([
+#                     dbc.Col(dcc.Dropdown(
+#                         id=f"edit-time-{item['id']}",
+#                         options=generate_time_options(),
+#                         value=item['time'],
+#                         clearable=False
+#                     ), width=2),
+#                     dbc.Col(dcc.Dropdown(
+#                         id=f"edit-type-{item['id']}",
+#                         options=[{"label": t, "value": t} for t in itinerary_types],
+#                         value=item['type'],
+#                         clearable=False
+#                     ), width=2),
+#                     dbc.Col(dbc.Input(id=f"edit-name-{item['id']}", value=item['name']), width=3),
+#                     dbc.Col(dbc.Input(id=f"edit-location-{item['id']}", value=item['location']), width=2),
+#                     dbc.Col(dbc.Input(id=f"edit-notes-{item['id']}", value=item['notes']), width=2),
+#                     dbc.Col([
+#                         dbc.Button("Save", id=f"save-item-{item['id']}", color='primary', className='d-block mb-1 w-100'),
+#                         dbc.Button("Delete", id=f"delete-item-{item['id']}", color='danger', size='sm')
+#                     ], width=2),
+#                 ], className="mb-2")
+#             ])
+#         )
+#     return html.Div(rows)
 
-# # Save edits to itinerary
+# # Save itinerary edits
 # @app.callback(
 #     Output('user-itinerary', 'children', allow_duplicate=True),
-#     Input({'type': 'save-item', 'index': ALL}, 'n_clicks'),
+#     [Input(f"save-item-{item['id']}", 'n_clicks') for user in mock_users.values() for item in user['itinerary']],
 #     State('select-user', 'value'),
-#     State({'type': 'edit-time', 'index': ALL}, 'value'),
-#     State({'type': 'edit-type', 'index': ALL}, 'value'),
-#     State({'type': 'edit-name', 'index': ALL}, 'value'),
-#     State({'type': 'edit-location', 'index': ALL}, 'value'),
-#     State({'type': 'edit-notes', 'index': ALL}, 'value'),
+#     [State(f"edit-time-{item['id']}", 'value') for user in mock_users.values() for item in user['itinerary']],
+#     [State(f"edit-type-{item['id']}", 'value') for user in mock_users.values() for item in user['itinerary']],
+#     [State(f"edit-name-{item['id']}", 'value') for user in mock_users.values() for item in user['itinerary']],
+#     [State(f"edit-location-{item['id']}", 'value') for user in mock_users.values() for item in user['itinerary']],
+#     [State(f"edit-notes-{item['id']}", 'value') for user in mock_users.values() for item in user['itinerary']],
 #     prevent_initial_call=True
 # )
-# def save_itinerary_edits(n_clicks, user, times, types, names, locations, notes):
-#     if not user or not n_clicks or not any(n_clicks):
+# def save_itinerary_edits(*args):
+#     user = args[0]  # you must pass select-user as separate Input or State if needed
+#     n_clicks_list = args[1]
+#     times = args[2]
+#     types_ = args[3]
+#     names = args[4]
+#     locations = args[5]
+#     notes = args[6]
+
+#     if not user or not any(n_clicks_list):
 #         return dash.no_update
-#     edited_data = zip(times, types, names, locations, notes)
-#     for i, (time, type_, name, loc, note) in enumerate(edited_data):
-#         if i < len(mock_users[user]['itinerary']):
-#             mock_users[user]['itinerary'][i]['time'] = time
-#             mock_users[user]['itinerary'][i]['type'] = type_
-#             mock_users[user]['itinerary'][i]['name'] = name
-#             mock_users[user]['itinerary'][i]['location'] = loc
-#             mock_users[user]['itinerary'][i]['notes'] = note
-#     sorted_itinerary = sorted(mock_users[user]['itinerary'], key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-#     mock_users[user]['itinerary'] = sorted_itinerary
+
+#     # Find which save button was clicked
+#     triggered = ctx.triggered[0]['prop_id'].split('.')[0]  # e.g., "save-item-<uuid>"
+#     if not triggered.startswith("save-item-"):
+#         return dash.no_update
+#     item_id = triggered[len("save-item-"):]
+
+#     # Find index of item_id in user's itinerary
+#     itinerary = mock_users[user]['itinerary']
+#     idx = next((i for i, itm in enumerate(itinerary) if itm['id'] == item_id), None)
+#     if idx is None:
+#         return dash.no_update
+
+#     # Update fields for that item
+#     mock_users[user]['itinerary'][idx]['time'] = times[idx]
+#     mock_users[user]['itinerary'][idx]['type'] = types_[idx]
+#     mock_users[user]['itinerary'][idx]['name'] = names[idx]
+#     mock_users[user]['itinerary'][idx]['location'] = locations[idx]
+#     mock_users[user]['itinerary'][idx]['notes'] = notes[idx]
+
+#     # Sort after save
+#     mock_users[user]['itinerary'].sort(key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
 #     return show_user_itinerary(user)
 
-# # Add new item to itinerary and clear inputs
+# #06/27/2025 Delete user itinerary callback
 # @app.callback(
-#     [
-#         Output('user-itinerary', 'children', allow_duplicate=True),
-#         Output('item-time', 'value'),
-#         Output('item-type', 'value'),
-#         Output('item-name', 'value'),
-#         Output('item-location', 'value'),
-#         Output('item-notes', 'value'),
-#     ],
-#     Input('add-item-btn', 'n_clicks'),
+#     Output('user-itinerary', 'children', allow_duplicate=True),
+#     [Input(f"delete-item-{item['id']}", 'n_clicks') for user in mock_users.values() for item in user['itinerary']],
 #     State('select-user', 'value'),
-#     State('item-time', 'value'),
-#     State('item-type', 'value'),
-#     State('item-name', 'value'),
-#     State('item-location', 'value'),
-#     State('item-notes', 'value'),
 #     prevent_initial_call=True
 # )
+# def delete_itinerary_item(*args):
+#     user = args[-1]
+#     n_clicks_list = args[:-1]
 
-# # Add the missing decorator here to make it a callback:
+#     if not user or not any(n_clicks_list):
+#         return dash.no_update
+
+#     # Find which delete button was clicked
+#     triggered = ctx.triggered[0]['prop_id'].split('.')[0]  # e.g., "delete-item-<uuid>"
+#     if not triggered.startswith("delete-item-"):
+#         return dash.no_update
+#     item_id = triggered[len("delete-item-"):]
+
+#     # Remove the item from user's itinerary
+#     mock_users[user]['itinerary'] = [item for item in mock_users[user]['itinerary'] if item['id'] != item_id]
+
+#     return show_user_itinerary(user)
+
+# @app.callback(
+#     Output('parkbag-layout-container', 'children'),
+#     Input('select-user-parkbag', 'value')
+# )
+# def update_parkbag_for_user(user):
+#     if not user:
+#         return html.P("Please select a user.")
+#     return get_park_bag_layout(user)
+
+# # Add new item to itinerary and clear inputs
 # @app.callback(
 #     [
 #         Output('user-itinerary', 'children', allow_duplicate=True),
@@ -507,27 +579,10 @@ if __name__ == '__main__':
 #         "notes": notes or ""
 #     }
 #     mock_users[user]["itinerary"].append(new_item)
-#     sorted_itinerary = sorted(mock_users[user]["itinerary"], key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-#     mock_users[user]["itinerary"] = sorted_itinerary
+#     mock_users[user]["itinerary"].sort(key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
 #     return show_user_itinerary(user), None, None, None, None, None
 
-# # def add_itinerary_item(n, user, time, type_, name, location, notes):
-# #     if not all([user, time, type_, name]):
-# #         return html.P("All fields except Location and Notes are required."), None, None, None, None, None
-# #     new_item = {
-# #         "id": str(uuid.uuid4()),
-# #         "time": time,
-# #         "type": type_,
-# #         "name": name,
-# #         "location": location or "",
-# #         "notes": notes or ""
-# #     }
-# #     mock_users[user]["itinerary"].append(new_item)
-# #     sorted_itinerary = sorted(mock_users[user]["itinerary"], key=lambda item: datetime.datetime.strptime(item['time'], "%I:%M %p"))
-# #     mock_users[user]["itinerary"] = sorted_itinerary
-# #     return show_user_itinerary(user), None, None, None, None, None
 
-
-# # Run the app
 # if __name__ == '__main__':
 #     app.run(host='0.0.0.0', port=8052, debug=True)
+
