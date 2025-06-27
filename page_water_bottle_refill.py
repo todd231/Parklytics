@@ -39,7 +39,12 @@ water_layout = dbc.Container(
 • Quick-service restaurants throughout all parks allow you to self-fill water bottles at soda fountains (ice + water); ask at counters for a free cup if needed 
 • For cold, filtered water, these self-serve fountains often taste better than standard fountain refills, especially compared to some park water sources
 """,
-                        style={"whiteSpace": "pre-wrap", "textAlign": "center", "fontSize": "1.1rem"},
+                        style={
+    "whiteSpace": "pre-wrap",
+    "textAlign": "center",
+    "fontSize": "1.1rem",
+    "fontFamily": "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+},
                         className="text-body"
                     )
                 ])
