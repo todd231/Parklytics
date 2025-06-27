@@ -3,8 +3,8 @@ from dash import html, dcc, Input, Output, State, ALL, ctx
 import dash_bootstrap_components as dbc
 import uuid
 import datetime
-from app_page_park_bag_checklist import checklist_data
-from app_page_water_bottle_refill import water_layout
+from page_park_bag_checklist import checklist_data
+from page_water_bottle_refill import water_layout
 
 # Initialize the app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
