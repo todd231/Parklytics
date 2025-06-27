@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 import uuid
 import datetime
 from app_page_park_bag_checklist import checklist_data
+from app_page_water_bottle_refill import water_layout
 
 # Initialize the app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
@@ -106,9 +107,9 @@ packing_layout = html.Div([
     html.H2("Trip Packing List (Coming Soon)")
 ])
 
-water_layout = html.Div([
-    html.H2("Water Bottle Refill Stations (Coming Soon)")
-])
+# water_layout = html.Div([
+#     html.H2("Water Bottle Refill Stations (Coming Soon)")
+# ])
 
 # App Layout
 app.layout = html.Div([
