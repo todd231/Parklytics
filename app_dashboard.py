@@ -965,10 +965,10 @@ def update_ride_hourly_trends(_):
                 xaxis=dict(
                     title="Hour",
                     tickmode='array',
-                    tickvals=list(range(7, 25)),
-                    ticktext=[f"{h:02d}:00" for h in range(7, 25)],
+                    tickvals=list(range(6, 24)),
+                    ticktext=[f"{(h-1)%12 + 1} {'AM' if h < 12 else 'PM'}" for h in range(6, 24)],
                     tickfont=dict(size=8),
-                    range=[7, 24],
+                    range=[6, 24],
                     type='linear'
                 ),
                 yaxis_title="Avg Wait (min)",
@@ -1078,7 +1078,7 @@ def update_combined_day_hour(_):
                     title="Hour of Day",
                     tickmode='array',
                     tickvals=list(range(7, 24)),
-                    ticktext=[f"{h:02d}:00" for h in range(7, 24)],
+                    ticktext=[f"{(h-1)%12 + 1} {'AM' if h < 12 else 'PM'}" for h in range(7, 24)],
                     tickangle=0,
                     tickfont=dict(size=8),
                     range=[6, 24],
