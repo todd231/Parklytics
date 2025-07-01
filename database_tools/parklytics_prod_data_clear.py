@@ -1,89 +1,86 @@
-# This script will only run once, giving Parklytics stable data starting from 7/1/2025 moving forward. All data will be archived into the June Wareshouse database in the test data folder. 
-
-
 import sqlite3
-import os
+from datetime import datetime
 
-# --- CONFIG ---
-TEST_MODE = True  # ← Flip to False to go live
-SOURCE_LIVE = "E:/app_data/live.db"
-SOURCE_WAREHOUSE = "E:/app_data/warehouse.db"
-DEST_PATH = "E:/app_data/test_data/warehouse_june_testdata.db"
+LIVE_DB = r"E:\app_data\db_live\live.db"
+WAREHOUSE_DB = r"E:\app_data\db_data_warehouse\warehouse.db"
+JUNE_TEST_DB = r"E:\app_data\test_data\warehouse_june_testdata.db"
+LOG_FILE = r"C:\Users\Todd\Desktop\migration_log.txt"
 
-def clone_schema(source_db, target_db):
-    with sqlite3.connect(source_db) as src_conn:
-        schema_query = "SELECT sql FROM sqlite_master WHERE type='table'"
-        schema = [row[0] for row in src_conn.execute(schema_query) if row[0]]
-        if TEST_MODE:
-            print(f"[TEST] Would create {len(schema)} tables from {source_db}")
-        else:
-            with sqlite3.connect(target_db) as tgt_conn:
-                for stmt in schema:
-                    tgt_conn.execute(stmt)
+TEST_MODE = False
 
-def copy_data(source_db, target_db):
-    with sqlite3.connect(source_db) as src_conn:
-        cursor = src_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        for (table_name,) in cursor:
-            rows = src_conn.execute(f"SELECT * FROM {table_name}").fetchall()
-            if TEST_MODE:
-                print(f"[TEST] Would copy {len(rows)} rows from table '{table_name}' in {source_db}")
-            else:
-                if rows:
-                    with sqlite3.connect(target_db) as tgt_conn:
-                        placeholders = ','.join(['?'] * len(rows[0]))
-                        tgt_conn.executemany(f"INSERT INTO {table_name} VALUES ({placeholders})", rows)
-                        tgt_conn.commit()
+TABLES = {
+    "queue_status": "timestamp",
+    "forecast": "timestamp",
+    "schedule": "date"
+}
 
-def verify_copy(source_db, target_db):
-    with sqlite3.connect(source_db) as src_conn, sqlite3.connect(target_db) as tgt_conn:
-        cursor = src_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        for (table_name,) in cursor:
-            src_count = src_conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-            tgt_count = tgt_conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-            print(f"✅ {table_name}: {src_count} → {tgt_count}")
-            if src_count != tgt_count:
-                raise Exception(f"❌ Row mismatch in table {table_name}!")
+CUTOFF = "2025-07-01"  # Updated year to 2025
 
-def purge_data(database):
-    with sqlite3.connect(database) as conn:
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        for (table_name,) in cursor:
-            if TEST_MODE:
-                print(f"[TEST] Would delete all rows from {table_name} in {database}")
-            else:
-                conn.execute(f"DELETE FROM {table_name}")
-        if not TEST_MODE:
-            conn.commit()
+def log(msg):
+    timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+    with open(LOG_FILE, "a") as f:
+        f.write(f"{timestamp} {msg}\n")
+    print(f"{timestamp} {msg}")
 
-# --- RUN ---
-if TEST_MODE:
-    print("🔍 Running in TEST MODE. No files will be modified.\n")
-
-if os.path.exists(DEST_PATH):
-    if TEST_MODE:
-        print(f"[TEST] Would remove existing backup at {DEST_PATH}")
+def copy_rows(src_conn, dest_conn, table, date_col):
+    dest_cursor = dest_conn.cursor()
+    # 1. Clear matching old rows in destination to avoid duplicates
+    if date_col == "date":
+        dest_cursor.execute(f"DELETE FROM {table} WHERE {date_col} < ?", (CUTOFF,))
     else:
-        os.remove(DEST_PATH)
+        dest_cursor.execute(f"DELETE FROM {table} WHERE datetime({date_col}) < datetime(?)", (CUTOFF,))
+    dest_conn.commit()
 
-print("Creating backup database...")
-clone_schema(SOURCE_LIVE, DEST_PATH)
-clone_schema(SOURCE_WAREHOUSE, DEST_PATH)
+    # 2. Fetch rows from source DB
+    cursor = src_conn.cursor()
+    if date_col == "date":
+        cursor.execute(f"SELECT * FROM {table} WHERE {date_col} < ?", (CUTOFF,))
+    else:
+        cursor.execute(f"SELECT * FROM {table} WHERE datetime({date_col}) < datetime(?)", (CUTOFF,))
+    rows = cursor.fetchall()
 
-print("Copying data from live.db...")
-copy_data(SOURCE_LIVE, DEST_PATH)
+    if not rows:
+        log(f"No data to copy from {table}.")
+        return
 
-print("Copying data from warehouse.db...")
-copy_data(SOURCE_WAREHOUSE, DEST_PATH)
+    # 3. Insert rows into destination
+    placeholders = ",".join(["?"] * len(rows[0]))
+    dest_cursor.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
+    dest_conn.commit()
+    log(f"Copied {len(rows)} rows from {table} into test warehouse.")
 
-if not TEST_MODE:
-    print("Verifying data integrity...")
-    verify_copy(SOURCE_LIVE, DEST_PATH)
-    verify_copy(SOURCE_WAREHOUSE, DEST_PATH)
 
-    print("All verifications passed. Proceeding to purge original databases...")
-    purge_data(SOURCE_LIVE)
-    purge_data(SOURCE_WAREHOUSE)
-    print("✔️ Backup complete and data purged successfully.")
-else:
-    print("\n✅ Test run complete. No changes made. Set TEST_MODE = False to execute for real.")
+def simulate_or_delete_rows(conn, table, date_col):
+    cursor = conn.cursor()
+    if date_col == "date":
+        cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE {date_col} < ?", (CUTOFF,))
+    else:
+        cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE datetime({date_col}) < datetime(?)", (CUTOFF,))
+    count = cursor.fetchone()[0]
+
+    if TEST_MODE:
+        log(f"[TEST MODE] Would delete {count} old rows from {table}.")
+    else:
+        if date_col == "date":
+            cursor.execute(f"DELETE FROM {table} WHERE {date_col} < ?", (CUTOFF,))
+        else:
+            cursor.execute(f"DELETE FROM {table} WHERE datetime({date_col}) < datetime(?)", (CUTOFF,))
+        deleted = cursor.rowcount
+        conn.commit()
+        log(f"Deleted {deleted} old rows from {table}.")
+
+def process_db(db_path, label):
+    log(f"\n--- Processing {label.upper()} ---")
+    with sqlite3.connect(db_path) as src_conn, sqlite3.connect(JUNE_TEST_DB) as test_conn:
+        for table, date_col in TABLES.items():
+            try:
+                copy_rows(src_conn, test_conn, table, date_col)
+                simulate_or_delete_rows(src_conn, table, date_col)
+            except Exception as e:
+                log(f"ERROR processing {table}: {e}")
+
+if __name__ == "__main__":
+    log(f"\n=== BEGIN MIGRATION (TEST MODE: {TEST_MODE}) ===")
+    process_db(LIVE_DB, "live.db")
+    process_db(WAREHOUSE_DB, "warehouse.db")
+    log("=== MIGRATION COMPLETE ===\n")
