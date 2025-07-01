@@ -1170,7 +1170,7 @@ def update_crowd_index_summary(n):
             html.P(f"Avg Wait: {avg_wait} min", className="text-muted"),
             html.P(f"Max Wait: {max_wait} min", className="text-muted"),
             html.P(f"{attractions_operating}/{attractions_total} Attractions Operating", className="text-muted"),
-            html.P(f"Utilization: {utilization}%", className="text-muted"),
+            #html.P(f"Utilization: {utilization}%", className="text-muted"),
             html.P(f"Confidence: {confidence}", className="text-muted")
         ]
 
