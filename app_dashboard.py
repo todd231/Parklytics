@@ -592,8 +592,10 @@ app.index_string = '''
 app.layout = dbc.Container([
     html.H1("Parklytics Disney World Dashboard", className="text-center my-4"),
     
+    #07/02/2025 - adding weather re-fresh
     # Weather Goes Here
-    get_weather_report_div(),
+    html.Div(id="weather-box"),
+    # get_weather_report_div(),
     
     # Park Info Section
     html.Div([
@@ -601,11 +603,43 @@ app.layout = dbc.Container([
         html.Div(id="park-info-section", className="mb-4"),
     ]),
     
-    # 06/25/2025 - Crowd Index Summary Section
+    # 7/2/2025 adding disclaimer/tag line for crowd index
     html.Div([
-        html.H2("Current Crowd Index Summary", className="text-center mb-4"),
-        html.Div(id="crowd-index-summary", className="mb-5"),
+    html.H2("Current Crowd Index Summary", className="text-center mb-2"),
+
+    html.P(
+        "The Crowd Index is like a congestion score. It shows how crowded the park feels right now, based on real-time ride wait data. "
+        "A score of 0 means the park is virtually empty, while 100 means it’s at max capacity. "
+        "Lower scores suggest lighter crowds with shorter waits, while higher scores point to heavy crowds and longer lines.",
+        style={
+            "textAlign": "center",
+            "fontSize": "0.8em",
+            "color": "#666",
+            "marginTop": "0",  # tighter spacing
+            "marginBottom": "1em", 
+            "marginLeft": "20%",
+            "marginRight": "20%",
+        }
+    ),
+
+    html.Div(id="crowd-index-summary", className="mb-5"),
     ]),
+    
+    # # 06/25/2025 - Crowd Index Summary Section
+    # html.Div([
+    #     html.H2("Current Crowd Index Summary", className="text-center mb-4"),
+    #     html.Div(id="crowd-index-summary", className="mb-5"),
+    # ]),
+    
+    # #07/02/2025 - Adding tag line for Crowd Index
+    # html.P(
+    # "The Crowd Index is like a congestion score. It shows how crowded the park feels right now, based on real-time ride wait data. A score of 0 means the park is virtually empty, while 100 means it’s at max capacity. Lower scores suggest lighter crowds with shorter waits, while higher scores point to heavy crowds and longer lines.",
+    # style={
+    #     "textAlign": "center",
+    #     "fontSize": "0.9em",
+    #     "color": "#666",  # optional: makes it look like a subtle caption
+    #     "marginTop": "0.5em"
+    # }),
     
     # Current Day Snapshot Section (Modified to show ALL attractions over 10 minutes)
     html.Div([
@@ -755,6 +789,14 @@ def update_park_info(_):
             )
 
     return dbc.Row(park_cards, className="mb-4")
+
+#07/02/2025 - adding weather callback: 
+@app.callback(
+    Output("weather-box", "children"),
+    Input("interval-component", "n_intervals")
+)
+def update_weather(_):
+    return get_weather_report_div()
 
 # 06/26/2025 - Updated callback to show DOWN rides
 @app.callback(
