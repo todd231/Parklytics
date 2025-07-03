@@ -624,23 +624,7 @@ app.layout = dbc.Container([
 
     html.Div(id="crowd-index-summary", className="mb-5"),
     ]),
-    
-    # # 06/25/2025 - Crowd Index Summary Section
-    # html.Div([
-    #     html.H2("Current Crowd Index Summary", className="text-center mb-4"),
-    #     html.Div(id="crowd-index-summary", className="mb-5"),
-    # ]),
-    
-    # #07/02/2025 - Adding tag line for Crowd Index
-    # html.P(
-    # "The Crowd Index is like a congestion score. It shows how crowded the park feels right now, based on real-time ride wait data. A score of 0 means the park is virtually empty, while 100 means it’s at max capacity. Lower scores suggest lighter crowds with shorter waits, while higher scores point to heavy crowds and longer lines.",
-    # style={
-    #     "textAlign": "center",
-    #     "fontSize": "0.9em",
-    #     "color": "#666",  # optional: makes it look like a subtle caption
-    #     "marginTop": "0.5em"
-    # }),
-    
+       
     # Current Day Snapshot Section (Modified to show ALL attractions over 10 minutes)
     html.Div([
         html.H2("Today's Day Snapshot - Attractions with 10+ Minute Waits", className="text-center mb-4"),
@@ -1149,7 +1133,6 @@ def update_crowd_index_summary(n):
         )
 
     return dbc.Row(rows)
-
 
 # Callback for Interval Timer (refresh global park data)
 @app.callback(
