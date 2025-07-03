@@ -1,0 +1,9 @@
+# Ignore Python artifacts
+__pycache__/
+*.pyc
+
+# Ignore VS Code stuff
+.vscode/
+
+# Ignore SQLite DBs
+*.sqlite*
